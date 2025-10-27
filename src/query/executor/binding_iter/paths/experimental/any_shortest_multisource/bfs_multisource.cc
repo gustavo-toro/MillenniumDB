@@ -6,7 +6,6 @@ using namespace Paths::Any;
 template<bool MULTIPLE_FINAL>
 void BFSMultiSource<MULTIPLE_FINAL>::_begin(Binding& _parent_binding)
 {
-    // TODO: what happens when a starting node is repeated?
     parent_binding = &_parent_binding;
 
     lhs->begin(_parent_binding);
@@ -54,7 +53,7 @@ void BFSMultiSource<MULTIPLE_FINAL>::fill_next_lhs_batch()
 
     // Starting state is solution
     if (automaton.is_final_state[automaton.start_state]) {
-        for (auto node_idx = total_start_nodes; node_idx < total_start_nodes; node_idx++) {
+        for (uint64_t node_idx = 0; node_idx < total_start_nodes; node_idx++) {
             MSSearchState state(automaton.start_state, start_batch[node_idx]);
             auto insert_status = search_states.insert(state);
             ready_solutions.emplace_back(insert_status.first.operator->());

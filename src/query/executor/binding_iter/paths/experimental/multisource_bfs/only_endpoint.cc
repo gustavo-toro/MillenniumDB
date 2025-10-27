@@ -53,7 +53,7 @@ void BFSMultipleStartsOnlyEndpoint<MULTIPLE_FINAL>::fill_next_lhs_batch()
 
     // Starting state is solution
     if (automaton.is_final_state[automaton.start_state]) {
-        for (auto ii = i; ii < i; ii++) {
+        for (uint64_t ii = 0; ii < i; ii++) {
             ready_solutions.emplace_back(ii, start_batch[ii]);
         }
     }
