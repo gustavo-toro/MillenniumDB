@@ -73,14 +73,15 @@ next_begin:
         // should i handle MULTIPLE FINAL here?
 
         for (auto&& [start_node, _] : solution->previous) {
-            std::pair<ObjectId, ObjectId> boundaries { start_node, solution->node_id };
+            EndpointSolution boundaries { static_cast<int>(start_node), solution->node_id };
 
             // we skip if this path was returned before
             if (!returned.insert(boundaries).second) {
                 continue;
             }
 
-            solution->start_node = start_node;
+            solution->start_node = start_batch[start_node];
+            solution->start_node_idx = start_node;
 
             auto path_id = path_manager.set_path(solution, path_var);
             parent_binding->add(start, solution->start_node);
@@ -125,6 +126,9 @@ bool BFSMultiSource<MULTIPLE_FINAL>::expand_neighbors(const MSSearchState& curre
         set_iter(current_state);
     }
 
+    auto it = std::find(start_batch.begin(), start_batch.end(), current_state.node_id);
+    uint32_t current_state_node_idx = it - start_batch.begin();
+
     // Iterate over the remaining transitions of current_state
     // Don't start from the beginning, resume where it left thanks to current_transition and iter (pipeline)
     while (current_transition < automaton.from_to_connections[current_state.automaton_state].size()) {
@@ -144,7 +148,7 @@ bool BFSMultiSource<MULTIPLE_FINAL>::expand_neighbors(const MSSearchState& curre
 
                 if (current_state.previous.empty()) { // TODO: should this be here
                     reached_state->set_previous(
-                        current_state.node_id,
+                        current_state_node_idx,
                         &current_state,
                         transition.type_id,
                         transition.inverse
@@ -166,7 +170,7 @@ bool BFSMultiSource<MULTIPLE_FINAL>::expand_neighbors(const MSSearchState& curre
 
                 if (current_state.previous.empty()) { // TODO: should this be here
                     reached_state->set_previous(
-                        current_state.node_id,
+                        current_state_node_idx,
                         &current_state,
                         transition.type_id,
                         transition.inverse

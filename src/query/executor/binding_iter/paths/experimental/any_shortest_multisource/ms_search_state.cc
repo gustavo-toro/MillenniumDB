@@ -9,21 +9,25 @@ void MSSearchState::print(
     bool begin_at_left
 ) const
 {
+    uint32_t start_idx = this->start_node_idx;
+    auto start = this->start_node;
+
     if (begin_at_left) {
         auto cur_state = this;
-        auto start = this->start_node;
 
         std::vector<ObjectId> nodes;
         std::vector<ObjectId> edges;
         std::vector<bool> inverse_directions;
 
-        while (cur_state->previous.count(start)) {
-            Transition transition = cur_state->previous[start];
+        auto it = cur_state->previous.find(start_idx);
+        while (it != cur_state->previous.end()) {
+            Transition& transition = it->second;
             nodes.push_back(cur_state->node_id);
             edges.push_back(transition.type_id);
             inverse_directions.push_back(transition.inverse_direction);
 
             cur_state = transition.state;
+            it = cur_state->previous.find(start_idx);
         }
 
         print_node(os, start);
@@ -33,14 +37,15 @@ void MSSearchState::print(
         }
     } else {
         auto cur_state = this;
-        auto start = this->start_node;
 
-        while (cur_state->previous.count(start)) {
-            Transition transition = cur_state->previous[start];
+        auto it = cur_state->previous.find(start_idx);
+        while (it != cur_state->previous.end()) {
+            Transition transition = cur_state->previous[start_idx];
             print_node(os, cur_state->node_id);
             print_edge(os, transition.type_id, !transition.inverse_direction);
 
             cur_state = transition.state;
+            it = cur_state->previous.find(start_idx);
         }
 
         print_node(os, start);

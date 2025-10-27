@@ -24,10 +24,12 @@ struct MSSearchState {
 
     // The start node of the reconstructed path
     mutable ObjectId start_node;
+    mutable uint32_t start_node_idx;
 
-    mutable std::map<ObjectId, Transition> previous;
+    //  start_index -> Transition
+    mutable std::map<uint32_t, Transition> previous;
 
-    mutable bool in_queue;
+    mutable bool in_queue = true;
 
     MSSearchState(uint32_t automaton_state, ObjectId node_id) :
         node_id(node_id),
@@ -37,13 +39,14 @@ struct MSSearchState {
     // MSSearchState(const MSSearchState& other) = delete;
 
     void set_previous(
-        ObjectId start_node,
+        uint32_t start_idx,
         const MSSearchState* previous_state,
         ObjectId type_id,
         bool inverse_direction
     ) const
     {
-        previous[start_node] = { previous_state, type_id, inverse_direction };
+        Transition transition{previous_state, type_id, inverse_direction};
+        previous.emplace(start_idx, transition);
     }
 
     void print(

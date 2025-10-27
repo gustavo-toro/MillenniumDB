@@ -8,6 +8,7 @@
 
 #include "boost/unordered/unordered_node_map.hpp"
 #include "query/executor/binding_iter.h"
+#include "query/executor/binding_iter/paths/experimental/endpoint_solution.h"
 #include "query/executor/binding_iter/paths/index_provider/path_index.h"
 #include "query/parser/paths/automaton/rpq_automaton.h"
 
@@ -59,7 +60,7 @@ private:
     std::vector<const MSSearchState*> ready_solutions;
 
     // Contains the start and end nodes of the returned paths
-    std::set<std::pair<ObjectId, ObjectId>> returned;
+    std::set<EndpointSolution> returned;
 
     boost::unordered_node_set<MSSearchState, std::hash<MSSearchState>> search_states;
 

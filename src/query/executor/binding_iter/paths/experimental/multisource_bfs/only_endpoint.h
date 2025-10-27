@@ -7,45 +7,13 @@
 #include <boost/unordered/unordered_node_set.hpp>
 
 #include "query/executor/binding_iter.h"
+#include "query/executor/binding_iter/paths/experimental/endpoint_solution.h"
 #include "query/executor/binding_iter/paths/index_provider/path_index.h"
 #include "query/parser/paths/automaton/rpq_automaton.h"
 
 #include "endpoint_search_state.h"
 
 namespace Paths { namespace Any {
-
-struct EndpointSolution {
-    int start_index;
-    ObjectId end;
-
-    EndpointSolution(int start_index, ObjectId end) :
-        start_index(start_index),
-        end(end)
-    { }
-
-    bool operator==(const EndpointSolution& other) const
-    {
-        return int(this->start_index == other.start_index) & int(this->end == other.end);
-    }
-
-    struct Hasher {
-        std::size_t operator()(const EndpointSolution& s) const
-        {
-            return s.end.id;
-        }
-    };
-};
-
-// Dummy structure for template usage
-class DummyEndpointSet {
-public:
-    static inline void clear() { }
-
-    static inline std::pair<bool, bool> insert(const EndpointSolution&)
-    {
-        return { true, true };
-    }
-};
 
 template<bool MULTIPLE_FINAL>
 class BFSMultipleStartsOnlyEndpoint : public BindingIter {
