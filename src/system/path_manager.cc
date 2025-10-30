@@ -3,7 +3,6 @@
 #include <cassert>
 #include <type_traits>
 
-#include "query/executor/binding_iter/paths/experimental/any_shortest_multisource/ms_search_state.h"
 #include "query/query_context.h"
 
 // memory for the object
@@ -197,6 +196,13 @@ ObjectId PathManager::set_path(const Paths::Any::MSSearchState* visited_pointer,
     return ObjectId(ObjectId::MASK_PATH | ANY_SHORTEST_MS_MASK | path_var.id);
 }
 
+ObjectId PathManager::set_path(const Paths::AllShortest::SolutionState* visited_pointer, VarId path_var)
+{
+    auto index = get_thread_index();
+    paths[index][path_var.id] = visited_pointer;
+    return ObjectId(ObjectId::MASK_PATH | ALL_SHORTEST_MS_MASK | path_var.id);
+}
+
 void PathManager::print(
     std::ostream& os,
     uint64_t path_id,
@@ -334,6 +340,13 @@ void PathManager::print(
     }
     case ANY_SHORTEST_MS_MASK: {
         auto state = reinterpret_cast<const Paths::Any::MSSearchState*>(
+            paths[index][decoded_id]
+        );
+        state->print(os, print_node, print_edge, begin_at_left[index][decoded_id]);
+        break;
+    }
+    case ALL_SHORTEST_MS_MASK: {
+        auto state = reinterpret_cast<const Paths::AllShortest::SolutionState*>(
             paths[index][decoded_id]
         );
         state->print(os, print_node, print_edge, begin_at_left[index][decoded_id]);

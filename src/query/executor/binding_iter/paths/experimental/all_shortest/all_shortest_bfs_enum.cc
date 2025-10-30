@@ -1,0 +1,243 @@
+#include "all_shortest_bfs_enum.h"
+
+#include "solution_state.h"
+#include "system/path_manager.h"
+
+#include <iostream>
+
+using namespace Paths::AllShortest;
+
+template<bool MULTIPLE_FINAL>
+void BFSMultiSource<MULTIPLE_FINAL>::_begin(Binding& _parent_binding)
+{
+    std::cout << "[AllShortest BFSMultiSource]" << std::endl;
+    parent_binding = &_parent_binding;
+
+    lhs->begin(_parent_binding);
+
+    lhs_at_end = false;
+    fill_next_lhs_batch();
+}
+
+template<bool MULTIPLE_FINAL>
+void BFSMultiSource<MULTIPLE_FINAL>::_reset()
+{
+    // Empty open and visited
+    std::queue<const MultiSourceSearchState*> empty;
+    open.swap(empty);
+
+    lhs->reset();
+    lhs_at_end = false;
+    ready_solutions.clear();
+
+    fill_next_lhs_batch();
+}
+
+template<bool MULTIPLE_FINAL>
+void BFSMultiSource<MULTIPLE_FINAL>::fill_next_lhs_batch()
+{
+    start_batch.clear();
+    reached_final.clear();
+    visited.clear();
+    if (lhs_at_end) {
+        return;
+    }
+
+    uint64_t i = 0;
+    while (i < 64 && lhs->next()) {
+        ObjectId start_node = (*parent_binding)[start];
+        if (!start_node.is_null()) {
+            auto state_inserted = visited.emplace(automaton.start_state, start_node).first.operator->();
+            start_batch.push_back(start_node);
+            open.push(state_inserted);
+
+            Transition transition { nullptr, ObjectId::get_null(), false };
+            state_inserted->add_new_previous(start_batch.size() - 1, transition, 0);
+
+            if (automaton.is_final_state[automaton.start_state]) {
+                ready_solutions.emplace_back(i, state_inserted);
+            }
+            i++;
+        }
+    }
+    lhs_at_end = i == 0;
+
+    iter = std::make_unique<NullIndexIterator>();
+}
+
+template<bool MULTIPLE_FINAL>
+bool BFSMultiSource<MULTIPLE_FINAL>::_next()
+{
+next_begin:
+    while (ready_solutions.size() > 0) {
+        // { start_idx, end_search_state }
+        auto solution = ready_solutions.back();
+
+        auto start_idx = solution.start_index;
+
+        auto it = solution.end_state->solution_states.find(start_idx);
+
+        // if a solution state exists, then we find the next path to return
+        if (it != solution.end_state->solution_states.end()) {
+            if (!it->second->has_next()) {
+                ready_solutions.pop_back();
+                continue;
+            }
+
+            auto& current_solution = it->second;
+            current_solution->advance();
+
+            auto path_id = path_manager.set_path(current_solution.get(), path_var);
+
+            parent_binding->add(path_var, path_id);
+            parent_binding->add(start, start_batch[start_idx]);
+            parent_binding->add(end, solution.end_state->node_id);
+            return true;
+
+        // otherwise, we create a solution state
+        } else {
+            // idx in the vector of previous states to enumerate
+            auto path_idx = solution.end_state->previous[start_idx].previous.size();
+
+            auto new_solution_state = std::make_unique<SolutionState>(path_idx, solution);
+
+            auto [it, inserted] = solution.end_state->solution_states.emplace(
+                start_idx,
+                std::move(new_solution_state)
+            );
+
+            auto path_id = path_manager.set_path(it->second.get(), path_var);
+
+            parent_binding->add(path_var, path_id);
+            parent_binding->add(start, start_batch[start_idx]);
+            parent_binding->add(end, solution.end_state->node_id);
+            return true;
+        }
+    }
+
+    while (open.size() > 0) {
+        auto current_state = open.front();
+
+        std::cout << "current: " << current_state->node_id << std::endl;
+
+        if (expand_neighbors(*current_state)) {
+            // Enumerate reached solutions
+            goto next_begin;
+        } else {
+            // Pop and visit next state
+            current_state->in_queue = false;
+            open.pop();
+        }
+    }
+    fill_next_lhs_batch();
+    if (!start_batch.empty()) {
+        goto next_begin;
+    }
+
+    return false;
+}
+
+template<bool MULTIPLE_FINAL>
+bool BFSMultiSource<MULTIPLE_FINAL>::expand_neighbors(const MultiSourceSearchState& current_state)
+{
+    // Check if this is the first time that current_state is explored
+    if (iter->at_end()) {
+        current_transition = 0;
+        // Check if automaton state has transitions
+        if (automaton.from_to_connections[current_state.automaton_state].size() == 0) {
+            return false;
+        }
+        set_iter(current_state);
+    }
+
+    // Iterate over the remaining transitions of current_state
+    // Don't start from the beginning, resume where it left thanks to current_transition and iter (pipeline)
+    while (current_transition < automaton.from_to_connections[current_state.automaton_state].size()) {
+        auto& transition = automaton.from_to_connections[current_state.automaton_state][current_transition];
+
+        // Iterate over records until a final state is reached
+        while (iter->next()) {
+            auto reached_node = ObjectId(iter->get_reached_node());
+
+            auto [it, inserted] = visited.emplace(transition.to, reached_node);
+            auto* reached_state = &*it;
+
+            std::cout << "  reached: " << reached_state->node_id << std::endl;
+
+            // we visit the state for the first time
+            if (inserted) {
+                open.push(reached_state);
+
+                // iterate over the starting nodes that reached the previous state
+                for (auto&& [start_node, cur_previous] : current_state.previous) {
+                    Transition path_transition { &current_state, transition.type_id, transition.inverse };
+                    reached_state->add_new_previous(start_node, path_transition, cur_previous.distance);
+                }
+
+                if (automaton.is_final_state[reached_state->automaton_state]) {
+                    for (auto&& [start_idx, _] : current_state.previous) {
+                        ready_solutions.emplace_back(start_idx, reached_state);
+                        return true;
+                    }
+                }
+            } else {
+                std::set<int> new_starts;
+
+                for (auto&& [start_node, cur_previous] : current_state.previous) {
+                    if (reached_state->reached_by(start_node)
+                        && cur_previous.distance + 1 == reached_state->get_distance(start_node))
+                    {
+                        Transition path_transition { &current_state, transition.type_id, transition.inverse };
+                        reached_state->add_previous(start_node, path_transition);
+
+                        new_starts.insert(start_node);
+
+                    } else if (!reached_state->reached_by(start_node)) {
+                        Transition path_transition { &current_state, transition.type_id, transition.inverse };
+                        reached_state
+                            ->add_new_previous(start_node, path_transition, cur_previous.distance + 1);
+
+                        new_starts.insert(start_node);
+                    }
+                }
+
+                // add to open if there are new paths that reach this state
+                if (!new_starts.empty() && !reached_state->in_queue) {
+                    open.push(reached_state);
+                    reached_state->in_queue = true;
+                }
+
+                // add the state as solution for each of the start indices
+                if (automaton.is_final_state[reached_state->automaton_state]) {
+                    for (auto start_idx : new_starts) {
+                        ready_solutions.emplace_back(start_idx, reached_state);
+                    }
+                    return true;
+                }
+            }
+        }
+
+        // Construct new iter with the next transition (if there exists one)
+        current_transition++;
+
+        if (current_transition < automaton.from_to_connections[current_state.automaton_state].size()) {
+            set_iter(current_state);
+        }
+    }
+    return false;
+}
+
+template<bool MULTIPLE_FINAL>
+void BFSMultiSource<MULTIPLE_FINAL>::print(std::ostream& os, int indent, bool stats) const
+{
+    if (stats) {
+        os << std::string(indent, ' ') << "[begin: " << stat_begin << " next: " << stat_next
+           << " reset: " << stat_reset << " results: " << results << " idx_searches: " << idx_searches
+           << "]\n";
+    }
+    os << std::string(indent, ' ') << "Paths::AllShortest::BFSMultiSource(start: " << start
+       << ", end: " << end << ")";
+}
+
+template class Paths::AllShortest::BFSMultiSource<true>;
+template class Paths::AllShortest::BFSMultiSource<false>;
